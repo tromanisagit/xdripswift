@@ -82,10 +82,10 @@ enum CGMTransmitterType:String, CaseIterable {
     case dexcomG4 = "Dexcom G4"
     
     /// dexcom G5, G6
-    case dexcom = "Dexcom"
+    case dexcom = "Dexcom G5/G6/ONE"
     
     /// dexcom G7
-    case dexcomG7 = "Dexcom G7"
+    case dexcomG7 = "Dexcom G7/ONE+/Stelo"
     
     /// miaomiao
     case miaomiao = "MiaoMiao"
@@ -298,11 +298,11 @@ enum CGMTransmitterType:String, CaseIterable {
                     
                 } else if transmitterIdString.startsWith("5") {
                     
-                    return "Dexcom One (5xxxxx)"
+                    return "Dexcom ONE"
                     
                 } else if transmitterIdString.startsWith("C") {
                     
-                    return "Dexcom One"
+                    return "Dexcom ONE"
                     
                 }
                 
@@ -310,8 +310,24 @@ enum CGMTransmitterType:String, CaseIterable {
             
             return "Dexcom"
             
+        case .dexcomG7:
+            if let transmitterIdString = UserDefaults.standard.activeSensorTransmitterId {
+                if transmitterIdString.startsWith("DX01") {
+                    return "Dexcom Stelo"
+                } else if transmitterIdString.startsWith("DX02") {
+                    return "Dexcom ONE+"
+                } else {
+                    return "Dexcom G7"
+                }
+            }
+            return "Dexcom - please wait..."
+            
         case .Libre2:
-            return "Libre 2 Direct"
+            if let activeSensorMaxSensorAgeInDays = UserDefaults.standard.activeSensorMaxSensorAgeInDays, activeSensorMaxSensorAgeInDays >= 15 {
+                return "Libre 2 Plus EU"
+            } else {
+                return "Libre 2 EU"
+            }
             
         default:
             return self.rawValue
