@@ -147,7 +147,7 @@ public class NightscoutSyncManager: NSObject, ObservableObject {
     ///     - lastConnectionStatusChangeTimeStamp : when was the last transmitter dis/reconnect
     public func uploadLatestBgReadings(lastConnectionStatusChangeTimeStamp: Date?) {
         // check that Nightscout is enabled
-        // and nightscoutUrl exists
+        // and nightscoutURL exists
         guard UserDefaults.standard.nightscoutEnabled, UserDefaults.standard.nightscoutUrl != nil else { return }
         
         if (UserDefaults.standard.timeStampLatestNightscoutSyncRequest ?? Date.distantPast).timeIntervalSinceNow < -ConstantsNightscout.minimiumTimeBetweenTwoTreatmentSyncsInSeconds {
@@ -203,7 +203,7 @@ public class NightscoutSyncManager: NSObject, ObservableObject {
     /// synchronize all treatments and other information with Nightscout
     private func syncWithNightscout() {
         // check that Nightscout is enabled
-        // and nightscoutUrl exists
+        // and nightscoutURL exists
         guard UserDefaults.standard.nightscoutEnabled, UserDefaults.standard.nightscoutUrl != nil else { return }
         
         // no sync needed if app is running in the background
@@ -369,7 +369,7 @@ public class NightscoutSyncManager: NSObject, ObservableObject {
         let queries = [URLQueryItem(name: "find[dateString][$gte]", value: String(timeStampOfBgReadingToDelete.addingTimeInterval(-1).ISOStringFromDate())), URLQueryItem(name: "find[dateString][$lte]", value: String(timeStampOfBgReadingToDelete.addingTimeInterval(+1).ISOStringFromDate()))]
         
         // send a DELETE http request with the queryItems
-        performHttpRequest(path: nightscoutEntriesPath, queries: queries, httpMethod: "DELETE", completionHandler: { (_: Data?, nightscoutResult: NightscoutResult) in
+        performHTTPRequest(path: nightscoutEntriesPath, queries: queries, httpMethod: "DELETE", completionHandler: { (_: Data?, nightscoutResult: NightscoutResult) in
             
             // this is maybe redundant as Nightscout returns a successful result even if no entries were actually found/deleted
             if nightscoutResult.successFull() {
@@ -492,7 +492,7 @@ public class NightscoutSyncManager: NSObject, ObservableObject {
         trace("in updateProfile", log: oslog, category: ConstantsLog.categoryNightscoutSyncManager, type: .info)
         
         guard UserDefaults.standard.nightscoutUrl != nil else {
-            trace("    nightscoutUrl is nil", log: oslog, category: ConstantsLog.categoryNightscoutSyncManager, type: .info)
+            trace("    nightscoutURL is nil", log: oslog, category: ConstantsLog.categoryNightscoutSyncManager, type: .info)
             return
         }
         
@@ -501,7 +501,6 @@ public class NightscoutSyncManager: NSObject, ObservableObject {
         if profile.startDate > Date() || profile.updatedDate > Date() {
             profile.startDate = .distantPast
             profile.updatedDate = .distantPast
-            profile.createdAt = .distantPast
         }
         
         // only allow the update check to happen if it's been at least 30 seconds since the last one.
@@ -515,7 +514,7 @@ public class NightscoutSyncManager: NSObject, ObservableObject {
             do {
                 // check if there is the newly downloaded profile response has an newer date than the stored one
                 // if so, then import it and overwrite the previously stored one
-                if let profileResponse = try await getNightscoutProfile().first, let newStartDate = NightscoutSyncManager.iso8601DateFormatter.date(from: profileResponse.startDate) {
+                if let profileResponse = try await getNightscoutProfile().first, let newStartDate = (UserDefaults.standard.nightscoutFollowType == .loop ? NightscoutSyncManager.iso8601DateFormatterWithoutFractionalSeconds.date(from: profileResponse.startDate) : NightscoutSyncManager.iso8601DateFormatter.date(from: profileResponse.startDate)) {
                     if newStartDate > profile.startDate {
                         if profile.startDate == .distantPast {
                             trace("    in updateProfile, no profile is stored yet. Importing Nightscout profile with date = %{public}@", log: self.oslog, category: ConstantsLog.categoryNightscoutSyncManager, type: .info, profile.startDate.formatted(date: .abbreviated, time: .shortened))
@@ -525,8 +524,7 @@ public class NightscoutSyncManager: NSObject, ObservableObject {
                         
                         profile.startDate = newStartDate
                         profile.profileName = profileResponse.defaultProfile
-                        profile.createdAt = NightscoutSyncManager.iso8601DateFormatter.date(from: profileResponse.createdAt) ?? .distantPast
-                        profile.enteredBy = profileResponse.enteredBy ?? ""
+                        profile.enteredBy = profileResponse.enteredBy
                         profile.updatedDate = .now
                     } else {
                         // downloaded profile start date is not newer than the existing profile so ignore it and do nothing
@@ -554,7 +552,6 @@ public class NightscoutSyncManager: NSObject, ObservableObject {
                         profile.carbratio = carbRatios
                         profile.sensitivity = sensitivities
                         profile.dia = newProfile.dia
-                        profile.carbsHr = newProfile.carbsHr
                         profile.timezone = newProfile.timezone
                         profile.isMgDl = newProfile.units == "mg/dl" ? true : false
                         
@@ -580,7 +577,7 @@ public class NightscoutSyncManager: NSObject, ObservableObject {
         trace("in updateDeviceStatus", log: oslog, category: ConstantsLog.categoryNightscoutSyncManager, type: .info)
         
         guard UserDefaults.standard.nightscoutUrl != nil else {
-            trace("    nightscoutUrl is nil", log: oslog, category: ConstantsLog.categoryNightscoutSyncManager, type: .info)
+            trace("    nightscoutURL is nil", log: oslog, category: ConstantsLog.categoryNightscoutSyncManager, type: .info)
             return
         }
         
@@ -588,7 +585,9 @@ public class NightscoutSyncManager: NSObject, ObservableObject {
         
         // just check in case there is something wrong with the dates (i.e. a phone setting change having created future dates)
         // if we detect this then reset the dates back to force a deviceStatus download and overwrite
-        if deviceStatus.createdAt > Date() || deviceStatus.updatedDate > Date() || deviceStatus.lastLoopDate > Date() {
+        // we'll act as if the current date is 20 seconds into the future, just to avoid any differences between timestamps between the Nightscout server and the user's device.
+        let currentDate = Date().addingTimeInterval(20)
+        if deviceStatus.createdAt > currentDate || deviceStatus.updatedDate > currentDate || deviceStatus.lastLoopDate > currentDate {
             deviceStatus.createdAt = .distantPast
             deviceStatus.updatedDate = .distantPast
             deviceStatus.lastLoopDate = .distantPast
@@ -609,13 +608,13 @@ public class NightscoutSyncManager: NSObject, ObservableObject {
                     // it doesn't matter if it wasn't enacted as that was already handled
                     // check if there is the newly downloaded profile response has an newer date than the stored one
                     // if so, then import it and overwrite the previously stored one
-                    if let deviceStatusResponse = deviceStatusResponseArray.first, let createdAt = NightscoutSyncManager.iso8601DateFormatter.date(from: deviceStatusResponse.createdAt ?? ""), createdAt > deviceStatus.createdAt {
-                        trace("in updateDeviceStatus (openAPS), updating internal device status with new date %{public}@ whilst existing internal device status date was %{public}@", log: self.oslog, category: ConstantsLog.categoryNightscoutSyncManager, type: .info, createdAt.formatted(date: .abbreviated, time: .shortened), deviceStatus.createdAt.formatted(date: .abbreviated, time: .shortened))
+                    if let deviceStatusResponse = deviceStatusResponseArray.first, let createdAt = NightscoutSyncManager.iso8601DateFormatter.date(from: deviceStatusResponse.createdAt ?? ""), createdAt > deviceStatus.createdAt, deviceStatusResponse.openAPS?.enacted != nil || deviceStatusResponse.openAPS?.suggested != nil {
+                        trace("in updateDeviceStatus (openAPS), updating device status with date %{public}@. Old device status date was %{public}@", log: self.oslog, category: ConstantsLog.categoryNightscoutSyncManager, type: .info, createdAt.formatted(date: .abbreviated, time: .shortened), deviceStatus.createdAt.formatted(date: .abbreviated, time: .shortened))
                         
                         deviceStatus.updatedDate = .now
                         deviceStatus.createdAt = createdAt
                         
-                        deviceStatus.device = deviceStatusResponse.device ?? ""
+                        deviceStatus.device = deviceStatusResponse.device
                         deviceStatus.id = deviceStatusResponse.id ?? ""
                         deviceStatus.mills = deviceStatusResponse.mills ?? 0
                         deviceStatus.utcOffset = deviceStatusResponse.utcOffset ?? 0
@@ -665,8 +664,8 @@ public class NightscoutSyncManager: NSObject, ObservableObject {
                         }
                         
                         if let uploader = deviceStatusResponse.uploader {
-                            deviceStatus.uploaderBatteryPercent = uploader.battery
-                            deviceStatus.uploaderIsCharging = uploader.isCharging
+                            deviceStatus.uploaderBatteryPercent = uploader.battery ?? deviceStatus.uploaderBatteryPercent
+                            deviceStatus.uploaderIsCharging = uploader.isCharging ?? deviceStatus.uploaderIsCharging
                         }
                         
                         // TODO: DEBUG
@@ -677,6 +676,7 @@ public class NightscoutSyncManager: NSObject, ObservableObject {
                         
                     } else {
                         // downloaded profile start date is not newer than the existing profile so ignore it and do nothing
+                        trace("in updateDeviceStatus (openAPS), no new loop cycle received. Exiting deviceStatus update", log: self.oslog, category: ConstantsLog.categoryNightscoutSyncManager, type: .info)
                         return
                     }
                     
@@ -832,7 +832,7 @@ public class NightscoutSyncManager: NSObject, ObservableObject {
         /// - only for latest treatments less than maxHoursTreatmentsToDownload old
         var didFindTreatmentInDownload = [Bool](repeating: false, count: treatmentsToSync.count)
         
-        performHttpRequest(path: nightscoutTreatmentPath, queries: queries, httpMethod: nil) { (data: Data?, nightscoutResult: NightscoutResult) in
+        performHTTPRequest(path: nightscoutTreatmentPath, queries: queries, httpMethod: nil) { (data: Data?, nightscoutResult: NightscoutResult) in
             
             guard nightscoutResult.successFull() else {
                 trace("    result is not success", log: self.oslog, category: ConstantsLog.categoryNightscoutSyncManager, type: .error)
@@ -919,6 +919,14 @@ public class NightscoutSyncManager: NSObject, ObservableObject {
                 URLComponents.port = UserDefaults.standard.nightscoutPort
             }
             
+            // if token not nil, then add also the token
+            if let token = UserDefaults.standard.nightscoutToken {
+                // Mutable copy used to add token if defined.
+                var queryItems = [URLQueryItem]()
+                queryItems.append(URLQueryItem(name: "token", value: token))
+                URLComponents.queryItems = queryItems
+            }
+            
             if let url = URLComponents.url {
                 var request = URLRequest(url: url)
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -953,6 +961,14 @@ public class NightscoutSyncManager: NSObject, ObservableObject {
         if let nightscoutURL = UserDefaults.standard.nightscoutUrl, let url = URL(string: nightscoutURL), var URLComponents = URLComponents(url: url.appendingPathComponent(nightscoutDeviceStatusPath), resolvingAgainstBaseURL: false) {
             if UserDefaults.standard.nightscoutPort != 0 {
                 URLComponents.port = UserDefaults.standard.nightscoutPort
+            }
+            
+            // if token not nil, then add also the token
+            if let token = UserDefaults.standard.nightscoutToken {
+                // Mutable copy used to add token if defined.
+                var queryItems = [URLQueryItem]()
+                queryItems.append(URLQueryItem(name: "token", value: token))
+                URLComponents.queryItems = queryItems
             }
             
             if let url = URLComponents.url {
@@ -990,6 +1006,14 @@ public class NightscoutSyncManager: NSObject, ObservableObject {
         if let nightscoutURL = UserDefaults.standard.nightscoutUrl, let url = URL(string: nightscoutURL), var URLComponents = URLComponents(url: url.appendingPathComponent(nightscoutDeviceStatusPath), resolvingAgainstBaseURL: false) {
             if UserDefaults.standard.nightscoutPort != 0 {
                 URLComponents.port = UserDefaults.standard.nightscoutPort
+            }
+            
+            // if token not nil, then add also the token
+            if let token = UserDefaults.standard.nightscoutToken {
+                // Mutable copy used to add token if defined.
+                var queryItems = [URLQueryItem]()
+                queryItems.append(URLQueryItem(name: "token", value: token))
+                URLComponents.queryItems = queryItems
             }
             
             if let url = URLComponents.url {
@@ -1192,18 +1216,18 @@ public class NightscoutSyncManager: NSObject, ObservableObject {
                 trace("    data to upload : %{public}@", log: oslog, category: ConstantsLog.categoryNightscoutSyncManager, type: .debug, dataToUploadAsJSONAsString)
             }
             
-            if let nightscoutUrl = UserDefaults.standard.nightscoutUrl, let url = URL(string: nightscoutUrl), var uRLComponents = URLComponents(url: url.appendingPathComponent(path), resolvingAgainstBaseURL: false) {
+            if let nightscoutURL = UserDefaults.standard.nightscoutUrl, let url = URL(string: nightscoutURL), var urlComponents = URLComponents(url: url.appendingPathComponent(path), resolvingAgainstBaseURL: false) {
                 if UserDefaults.standard.nightscoutPort != 0 {
-                    uRLComponents.port = UserDefaults.standard.nightscoutPort
+                    urlComponents.port = UserDefaults.standard.nightscoutPort
                 }
                 
                 // if token not nil, then add also the token
                 if let token = UserDefaults.standard.nightscoutToken {
                     let queryItems = [URLQueryItem(name: "token", value: token)]
-                    uRLComponents.queryItems = queryItems
+                    urlComponents.queryItems = queryItems
                 }
                 
-                if let url = uRLComponents.url {
+                if let url = urlComponents.url {
                     // Create Request
                     var request = URLRequest(url: url)
                     request.httpMethod = httpMethod ?? "POST"
@@ -1310,7 +1334,7 @@ public class NightscoutSyncManager: NSObject, ObservableObject {
                 }
                 
             } else {
-                // case where nightscoutUrl is nil, which should normally not happen because nightscoutUrl was checked before calling this function
+                // case where nightscoutURL is nil, which should normally not happen because nightscoutURL was checked before calling this function
                 completionHandler(nil, NightscoutResult.failed)
             }
             
@@ -1556,7 +1580,7 @@ public class NightscoutSyncManager: NSObject, ObservableObject {
             return
         }
         
-        performHttpRequest(path: nightscoutTreatmentPath + "/" + treatmentToDelete.id.split(separator: "-")[0], queries: [], httpMethod: "DELETE", completionHandler: { (_: Data?, nightscoutResult: NightscoutResult) in
+        performHTTPRequest(path: nightscoutTreatmentPath + "/" + treatmentToDelete.id.split(separator: "-")[0], queries: [], httpMethod: "DELETE", completionHandler: { (_: Data?, nightscoutResult: NightscoutResult) in
             
             self.coreDataManager.mainManagedObjectContext.performAndWait {
                 if nightscoutResult.successFull() {
@@ -1576,31 +1600,33 @@ public class NightscoutSyncManager: NSObject, ObservableObject {
     ///     - path : the query path
     ///     - queries : an array of URLQueryItem (added after the '?' at the URL)
     ///     - completionHandler : will be executed with the response Data? if successfull
-    private func performHttpRequest(path: String, queries: [URLQueryItem], httpMethod: String?, completionHandler: @escaping ((Data?, NightscoutResult) -> Void)) {
-        guard let nightscoutUrl = UserDefaults.standard.nightscoutUrl else {
-            trace("    nightscoutUrl is nil", log: oslog, category: ConstantsLog.categoryNightscoutSyncManager, type: .info)
+    private func performHTTPRequest(path: String, queries: [URLQueryItem], httpMethod: String?, completionHandler: @escaping ((Data?, NightscoutResult) -> Void)) {
+        guard let nightscoutURL = UserDefaults.standard.nightscoutUrl else {
+            trace("    nightscoutURL is nil", log: oslog, category: ConstantsLog.categoryNightscoutSyncManager, type: .info)
             completionHandler(nil, .failed)
             return
         }
         
-        guard let url = URL(string: nightscoutUrl), var uRLComponents = URLComponents(url: url.appendingPathComponent(path), resolvingAgainstBaseURL: false) else {
+        guard let url = URL(string: nightscoutURL), var urlComponents = URLComponents(url: url.appendingPathComponent(path), resolvingAgainstBaseURL: false) else {
             completionHandler(nil, .failed)
             return
         }
         
         if UserDefaults.standard.nightscoutPort != 0 {
-            uRLComponents.port = UserDefaults.standard.nightscoutPort
+            urlComponents.port = UserDefaults.standard.nightscoutPort
         }
         
         // Mutable copy used to add token if defined.
         var queryItems = queries
+        
         // if token not nil, then add also the token
         if let token = UserDefaults.standard.nightscoutToken {
             queryItems.append(URLQueryItem(name: "token", value: token))
         }
-        uRLComponents.queryItems = queryItems
         
-        if let url = uRLComponents.url {
+        urlComponents.queryItems = queryItems
+        
+        if let url = urlComponents.url {
             // Create Request
             var request = URLRequest(url: url)
             request.httpMethod = httpMethod ?? "GET"
@@ -1623,8 +1649,8 @@ public class NightscoutSyncManager: NSObject, ObservableObject {
                     return
                 }
                 
-                if let hTTPURLResponse = urlResponse as? HTTPURLResponse {
-                    if hTTPURLResponse.statusCode == 200 {
+                if let httpURLResponse = urlResponse as? HTTPURLResponse {
+                    if httpURLResponse.statusCode == 200 {
                         // store the current timestamp as a successful server response
                         UserDefaults.standard.timeStampOfLastFollowerConnection = Date()
                         
@@ -1632,7 +1658,7 @@ public class NightscoutSyncManager: NSObject, ObservableObject {
                         completionHandler(data, .success(0))
                         
                     } else {
-                        trace("    status code = %{public}@", log: self.oslog, category: ConstantsLog.categoryNightscoutSyncManager, type: .info, hTTPURLResponse.statusCode.description)
+                        trace("    status code = %{public}@", log: self.oslog, category: ConstantsLog.categoryNightscoutSyncManager, type: .info, httpURLResponse.statusCode.description)
                         
                         completionHandler(data, .failed)
                     }
@@ -1650,12 +1676,12 @@ public class NightscoutSyncManager: NSObject, ObservableObject {
             return
         }
         
-        if let nightscoutURL = UserDefaults.standard.nightscoutUrl, let url = URL(string: nightscoutURL), var uRLComponents = URLComponents(url: url.appendingPathComponent(nightscoutAuthTestPath), resolvingAgainstBaseURL: false) {
+        if let nightscoutURL = UserDefaults.standard.nightscoutUrl, let url = URL(string: nightscoutURL), var urlComponents = URLComponents(url: url.appendingPathComponent(nightscoutAuthTestPath), resolvingAgainstBaseURL: false) {
             if UserDefaults.standard.nightscoutPort != 0 {
-                uRLComponents.port = UserDefaults.standard.nightscoutPort
+                urlComponents.port = UserDefaults.standard.nightscoutPort
             }
             
-            if let url = uRLComponents.url {
+            if let url = urlComponents.url {
                 var request = URLRequest(url: url)
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 request.setValue("application/json", forHTTPHeaderField: "Accept")

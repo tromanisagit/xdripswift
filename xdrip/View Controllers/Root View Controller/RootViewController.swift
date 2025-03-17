@@ -10,9 +10,7 @@ import PieCharts
 import WatchConnectivity
 import SwiftUI
 import WidgetKit
-#if canImport(AppIntents)
 import AppIntents
-#endif
 
 /// viewcontroller for the home screen
 final class RootViewController: UIViewController, ObservableObject {
@@ -1814,6 +1812,13 @@ final class RootViewController: UIViewController, ObservableObject {
         calibrateToolbarButtonOutlet.title = Texts_HomeView.calibrationButton
         screenLockToolbarButtonOutlet.title = screenIsLocked ? Texts_HomeView.unlockButton : Texts_HomeView.lockButton
         
+        // provide the older SF Symbol for the calibrate button for users below iOS17
+        if #available(iOS 17.0, *) {
+            calibrateToolbarButtonOutlet.image = UIImage(systemName: "dot.scope")
+        } else {
+            calibrateToolbarButtonOutlet.image = UIImage(systemName: "scope")
+        }
+        
         chartLongPressGestureRecognizerOutlet.delegate = self
         chartPanGestureRecognizerOutlet.delegate = self
         
@@ -3133,6 +3138,10 @@ final class RootViewController: UIViewController, ObservableObject {
     private func updateDataSourceInfo() {
         let isMaster: Bool = UserDefaults.standard.isMaster
         
+        // use this as a flag to identify if an Anubis transmitter is being used
+        // this will only be returned as true by cgmTransmitter.isAnubis() for a detected G6 Anubis
+        var isAnubis = false
+        
         // reset relevant labels colors just in case they were changed the previous time this function was called
         dataSourceSensorMaxAgeOutlet.textColor = .lightGray
         
@@ -3153,6 +3162,9 @@ final class RootViewController: UIViewController, ObservableObject {
             
             // update the sensor type - needed to make sure we test with the correct warm-up times later
             sensorType = cgmTransmitter.cgmTransmitterType().sensorType()
+            
+            // update the isAnubis flag
+            isAnubis = cgmTransmitter.isAnubisG6()
         }
         
         // let's just check that we've got enough information to display the view
@@ -3172,45 +3184,27 @@ final class RootViewController: UIViewController, ObservableObject {
             // blank out the current sensor age label by default. If the sensor isn't in warm-up, then it will be filled in later
             dataSourceSensorCurrentAgeOutlet.text = ""
             
-            // check if there are any recent bg readings. If not then check if the sensor is in warm-up time
-            if let bgReadingsAccessor = self.bgReadingsAccessor {
-                // get 2 last Readings, with a calculatedValue
-                let lastReading = bgReadingsAccessor.get2LatestBgReadings(minimumTimeIntervalInMinutes: 0)
-                
-                // if no recent readings then check if the sensor is in warm-up
-                if lastReading.count == 0 {
-                    // set-up the labels for the sensor time, total and also if still considered in warm-up
-                    if !isMaster && UserDefaults.standard.followerDataSourceType == .libreLinkUp && sensorAgeInMinutes < ConstantsLibreLinkUp.sensorWarmUpRequiredInMinutesForLibre {
-                        // the LibreLinkUp active sensor is still in warm-up
-                        if let sensorReadyDateTime = sensorStartDate?.addingTimeInterval(ConstantsLibreLinkUp.sensorWarmUpRequiredInMinutesForLibre * 60) {
-                            dataSourceSensorMaxAgeOutlet.text = Texts_BluetoothPeripheralView.warmingUpUntil + " " + sensorReadyDateTime.toStringInUserLocale(timeStyle: .short, dateStyle: .none)
-                        }
-                        
-                    } else if isMaster && sensorType == .Libre && sensorAgeInMinutes < ConstantsMaster.minimumSensorWarmUpRequiredInMinutes {
-                        // the connected Libre sensor is still in warm-up (as per defined minimum warm-up time)
-                        if let sensorReadyDateTime = sensorStartDate?.addingTimeInterval(ConstantsMaster.minimumSensorWarmUpRequiredInMinutes * 60) {
-                            dataSourceSensorMaxAgeOutlet.text = Texts_BluetoothPeripheralView.warmingUpUntil + " " + sensorReadyDateTime.toStringInUserLocale(timeStyle: .short, dateStyle: .none)
-                        }
-                        
-                    } else if isMaster && sensorType == .Dexcom && sensorAgeInMinutes < ConstantsMaster.minimumSensorWarmUpRequiredInMinutesDexcomG5G6 {
-                        // the connected Dexcom sensor is still in warm-up (as per defined standard Dexcom warm-up time)
-                        if let sensorReadyDateTime = sensorStartDate?.addingTimeInterval(ConstantsMaster.minimumSensorWarmUpRequiredInMinutesDexcomG5G6 * 60) {
-                            dataSourceSensorMaxAgeOutlet.text = Texts_BluetoothPeripheralView.warmingUpUntil + " " + sensorReadyDateTime.toStringInUserLocale(timeStyle: .short, dateStyle: .none)
-                            
-                        } else {
-                            // fill in the labels to show sensor time elapsed and max age
-                            dataSourceSensorCurrentAgeOutlet.text = sensorStartDate?.daysAndHoursAgo()
-                            
-                            dataSourceSensorMaxAgeOutlet.text = " / " + sensorMaxAgeInMinutes.minutesToDaysAndHours()
-                        }
-                    }
-                    
-                } else {
-                    // fill in the labels to show sensor time elapsed and max age
-                    dataSourceSensorCurrentAgeOutlet.text = sensorStartDate?.daysAndHoursAgo()
-                    
-                    dataSourceSensorMaxAgeOutlet.text = " / " + sensorMaxAgeInMinutes.minutesToDaysAndHours()
+            // set-up the labels for the sensor time, total and also if still considered in warm-up
+            if !isMaster && UserDefaults.standard.followerDataSourceType == .libreLinkUp && sensorAgeInMinutes < ConstantsLibreLinkUp.sensorWarmUpRequiredInMinutesForLibre {
+                // the LibreLinkUp active sensor is still in warm-up
+                if let sensorReadyDateTime = sensorStartDate?.addingTimeInterval(ConstantsLibreLinkUp.sensorWarmUpRequiredInMinutesForLibre * 60) {
+                    dataSourceSensorMaxAgeOutlet.text = Texts_BluetoothPeripheralView.warmingUpUntil + " " + sensorReadyDateTime.toStringInUserLocale(timeStyle: .short, dateStyle: .none)
                 }
+                
+            } else if isMaster && sensorType == .Libre && sensorAgeInMinutes < ConstantsMaster.minimumSensorWarmUpRequiredInMinutes {
+                // the connected Libre sensor is still in warm-up (as per defined minimum warm-up time)
+                if let sensorReadyDateTime = sensorStartDate?.addingTimeInterval(ConstantsMaster.minimumSensorWarmUpRequiredInMinutes * 60) {
+                    dataSourceSensorMaxAgeOutlet.text = Texts_BluetoothPeripheralView.warmingUpUntil + " " + sensorReadyDateTime.toStringInUserLocale(timeStyle: .short, dateStyle: .none)
+                }
+            } else if isMaster && sensorType == .Dexcom && sensorAgeInMinutes < (isAnubis ? ConstantsMaster.minimumSensorWarmUpRequiredInMinutesDexcomG6Anubis : ConstantsMaster.minimumSensorWarmUpRequiredInMinutesDexcomG5G6) {
+                // the connected Dexcom sensor is still in warm-up
+                if let sensorReadyDateTime = sensorStartDate?.addingTimeInterval((isAnubis ? ConstantsMaster.minimumSensorWarmUpRequiredInMinutesDexcomG6Anubis : ConstantsMaster.minimumSensorWarmUpRequiredInMinutesDexcomG5G6) * 60) {
+                    dataSourceSensorMaxAgeOutlet.text = Texts_BluetoothPeripheralView.warmingUpUntil + " " + sensorReadyDateTime.toStringInUserLocale(timeStyle: .short, dateStyle: .none)
+                }
+            } else {
+                // fill in the labels to show sensor time elapsed and max age
+                dataSourceSensorCurrentAgeOutlet.text = sensorStartDate?.daysAndHoursAgo()
+                dataSourceSensorMaxAgeOutlet.text = " / " + sensorMaxAgeInMinutes.minutesToDaysAndHours()
             }
             
             // set progress view colours and text colours from constants file
@@ -3235,7 +3229,10 @@ final class RootViewController: UIViewController, ObservableObject {
             }
             
             // set the sensor/system description
-            dataSourceLabelOutlet.text = UserDefaults.standard.activeSensorDescription
+            // if using an Anubis G6 transmitter, let's add some more info. This is only done here in RVC because there is more room.
+            if let activeSensorDescription = UserDefaults.standard.activeSensorDescription {
+                dataSourceLabelOutlet.text = activeSensorDescription + (isAnubis ? " (Anubis)" : "")
+            }
             
             // let's run the progress update in an async thread with a really small delay so that the animation updates smoothly after the view has appeared
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -3280,7 +3277,6 @@ final class RootViewController: UIViewController, ObservableObject {
             
             switch UserDefaults.standard.followerDataSourceType {
             case .nightscout:
-                
                 if !UserDefaults.standard.nightscoutEnabled {
                     dataSourceSensorMaxAgeOutlet.textColor = .systemRed
                     dataSourceSensorMaxAgeOutlet.text = Texts_HomeView.nightscoutNotEnabled
@@ -3301,11 +3297,13 @@ final class RootViewController: UIViewController, ObservableObject {
                     dataSourceSensorMaxAgeOutlet.text = nightscoutUrlString
                 }
                 
-            case .libreLinkUp:
-                
+            case .libreLinkUp, .libreLinkUpRussia:
                 if UserDefaults.standard.libreLinkUpEmail == nil || UserDefaults.standard.libreLinkUpPassword == nil {
                     dataSourceSensorMaxAgeOutlet.textColor = .systemRed
                     dataSourceSensorMaxAgeOutlet.text = Texts_HomeView.libreLinkUpAccountCredentialsMissing
+                } else if UserDefaults.standard.libreLinkUpPreventLogin {
+                    dataSourceSensorMaxAgeOutlet.textColor = .systemRed
+                    dataSourceSensorMaxAgeOutlet.text = Texts_HomeView.libreLinkUpAccountCredentialsInvalid
                 }
             }
         }
@@ -3412,6 +3410,12 @@ final class RootViewController: UIViewController, ObservableObject {
             landscapeValueViewController.view.alpha = 0
             view.addSubview(landscapeValueViewController.view)
             addChild(landscapeValueViewController)
+
+            // disable user interaction, if user wants to interact then device needs to rotate back to portrait
+            if let overlayView = self.overlayView {
+                overlayView.isUserInteractionEnabled = false
+            }
+
             coordinator.animate(alongsideTransition: { _ in
                 // if the screen dimming overlay is enabled, then resize it to fit the landscape view
                 if UserDefaults.standard.screenLockDimmingType != .disabled {
@@ -3419,6 +3423,7 @@ final class RootViewController: UIViewController, ObservableObject {
                 }
                 
                 landscapeValueViewController.view.alpha = 1
+                
             }, completion: { _ in
                 landscapeValueViewController.didMove(toParent: self)
                 // this function updates also the labels in the landscapeChartViewController
@@ -3452,6 +3457,12 @@ final class RootViewController: UIViewController, ObservableObject {
             })
             
         }
+        
+        // disable user interaction, if user wants to interact then device needs to rotate back to portrait
+        if let overlayView = self.overlayView {
+            overlayView.isUserInteractionEnabled = true
+        }
+
         
     }
     
@@ -3577,11 +3588,8 @@ final class RootViewController: UIViewController, ObservableObject {
                 
                 // add delta if available
                 if bgReadings.count > 1 {
-                    var previousValueInUserUnit: Double = 0.0
-                    var actualValueInUserUnit: Double = 0.0
-                    
-                    previousValueInUserUnit = bgReadings[1].calculatedValue.mgDlToMmol(mgDl: isMgDl)
-                    actualValueInUserUnit = bgReadings[0].calculatedValue.mgDlToMmol(mgDl: isMgDl)
+                    var previousValueInUserUnit: Double = bgReadings[1].calculatedValue.mgDlToMmol(mgDl: isMgDl)
+                    var actualValueInUserUnit: Double = bgReadings[0].calculatedValue.mgDlToMmol(mgDl: isMgDl)
                     
                     // if the values are in mmol/L, then round them to the nearest decimal point in order to get the same precision out of the next operation
                     if !isMgDl {
@@ -3590,7 +3598,6 @@ final class RootViewController: UIViewController, ObservableObject {
                     }
                     
                     deltaValueInUserUnit = actualValueInUserUnit - previousValueInUserUnit
-                    
                     slopeOrdinal = bgReadings[0].slopeOrdinal()
                 }
                 
@@ -3770,9 +3777,6 @@ final class RootViewController: UIViewController, ObservableObject {
                 
                 // if there is reasonably recent data, then show values
             } else if deviceStatus.createdAt > Date().addingTimeInterval(-ConstantsHomeView.loopShowNoDataAfterMinutes) {
-                // TODO: DEBUG
-                trace("deviceStatus.createdAt > Date().addingTimeInterval(-ConstantsHomeView.loopShowNoDataAfterMinutes). createdAt = %{public}@ > %{public}@", log: log, category: ConstantsLog.categoryRootView, type: .debug, deviceStatus.createdAt.formatted(date: .abbreviated, time: .standard), Date().addingTimeInterval(-ConstantsHomeView.loopShowNoDataAfterMinutes).formatted(date: .abbreviated, time: .standard))
-                
                 updateDeviceStatusValues(showData: true)
                 
                 // reset the text colours (in case they were dimmed when the app went to the background)
@@ -3821,9 +3825,6 @@ final class RootViewController: UIViewController, ObservableObject {
                 
                 // so there is no recent data, so hide everything and show red
             } else {
-                // TODO: DEBUG
-                trace("no recent data. createdAt = %{public}@", log: log, category: ConstantsLog.categoryRootView, type: .debug, deviceStatus.createdAt.formatted(date: .abbreviated, time: .standard))
-                
                 updateDeviceStatusValues(showData: false)
                 
                 infoStatusActivityIndicatorOutlet.isHidden = true
@@ -3834,8 +3835,8 @@ final class RootViewController: UIViewController, ObservableObject {
                 infoStatusButtonOutlet.setTitle(deviceStatus.deviceStatusTitle(), for: .normal)
                 infoStatusButtonOutlet.setTitleColor(deviceStatus.deviceStatusUIColor(), for: .normal)
                 
-                // TODO: DEBUG
-                trace("RVC device status error: createdAt = %{public}@, lastChecked = %{public}@, lastLoopDate = %{public}@", log: log, category: ConstantsLog.categoryRootView, type: .debug, nightscoutSyncManager?.deviceStatus.createdAt.formatted(date: .omitted, time: .standard) ?? "nil", nightscoutSyncManager?.deviceStatus.lastCheckedDate.formatted(date: .omitted, time: .standard) ?? "nil", nightscoutSyncManager?.deviceStatus.lastLoopDate.formatted(date: .omitted, time: .standard) ?? "nil")
+                // only for debug trace file
+                trace("DeviceStatusUpdate - device status error. createdAt = %{public}@, lastChecked = %{public}@, lastLoopDate = %{public}@", log: log, category: ConstantsLog.categoryRootView, type: .debug, nightscoutSyncManager?.deviceStatus.createdAt.formatted(date: .omitted, time: .standard) ?? "nil", nightscoutSyncManager?.deviceStatus.lastCheckedDate.formatted(date: .omitted, time: .standard) ?? "nil", nightscoutSyncManager?.deviceStatus.lastLoopDate.formatted(date: .omitted, time: .standard) ?? "nil")
             }
         }
     }
@@ -4096,7 +4097,7 @@ extension RootViewController: FollowerDelegate {
                             _ = followManager.createBgReading(followGlucoseData: followGlucoseData)
                         }
                         
-                    case .libreLinkUp:
+                    case .libreLinkUp, .libreLinkUpRussia:
                         
                         if let followManager = libreLinkUpFollowManager {
                             _ = followManager.createBgReading(followGlucoseData: followGlucoseData)

@@ -140,6 +140,12 @@ class Texts_SettingsView {
         return NSLocalizedString("settingsviews_labelFollowerDataSourceRegion", tableName: filename, bundle: Bundle.main, value: "Server (Country)", comment: "data source settings, data source region")
     }()
     
+    // this is a default text for the settings row and should never really be used as we'll
+    // hide the row anyway if we can't get the serial number to see if it's a Libre 2 or Libre 3
+    static let labelFollowerIs15DaySensor: String = {
+        return NSLocalizedString("settingsviews_labelFollowerIs15DaySensor", tableName: filename, bundle: Bundle.main, value: "Is a Libre Plus?", comment: "data source settings, should the app consider this sensor as a 15 day Plus version")
+    }()
+    
     static let enterUsername = {
         return NSLocalizedString("settingsviews_enterUsername", tableName: filename, bundle: Bundle.main, value: "Enter your username (e-mail)", comment: "follower settings, pop up that asks user to enter their username")
     }()
@@ -360,7 +366,7 @@ class Texts_SettingsView {
     }()
     
     static let resetDexcomTransmitterMessage: String = {
-        return NSLocalizedString("settingsviews_resetDexcomTransmitterMessage", tableName: filename, bundle: Bundle.main, value: "\nThis option will attempt to reset the transmitter on the next connection.\n\nNote that this will only work for G5 transmitters, very early G6 and all Anubis G6 transmitters.\n\nIt will NOT work for normal G6 or ONE transmitters.", comment: "transmitter settings, to explain that the reset option only works for certain transmitters")
+        return NSLocalizedString("settingsviews_resetDexcomTransmitterMessage", tableName: filename, bundle: Bundle.main, value: "\nThis option will attempt to reset your Anubis transmitter on the next connection.", comment: "transmitter settings, to explain that the reset option only works for certain transmitters")
     }()
     
     static let labelWebOOPTransmitter:String = {
