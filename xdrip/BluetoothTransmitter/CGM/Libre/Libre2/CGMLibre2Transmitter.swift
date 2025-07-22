@@ -384,7 +384,7 @@ extension CGMLibre2Transmitter: LibreNFCDelegate {
             
             var framCopy = fram
             
-            if libreSensorType.decryptIfPossibleAndNeeded(rxBuffer: &framCopy, headerLength: 0, log: log, patchInfo: patchInfo.hexEncodedString().uppercased(), uid: sensorUID.bytes) {
+            if libreSensorType.decryptIfPossibleAndNeeded(rxBuffer: &framCopy, headerLength: 0, log: log, patchInfo: patchInfo.hexEncodedString().uppercased(), uid: Array(sensorUID)) {
                 
                 // we have all date to create libre1DerivedAlgorithmParameters
                 UserDefaults.standard.libre1DerivedAlgorithmParameters = Libre1DerivedAlgorithmParameters(bytes: framCopy, serialNumber: serialNumber, libreSensorType: libreSensorType)
@@ -488,9 +488,13 @@ extension CGMLibre2Transmitter: LibreNFCDelegate {
         
     }
     
-    func nfcScanSerialNumber(sensorSerialNumber: String) {
+    func nfcScanExpectedDevice(serialNumber: String, macAddress: String) {
         
-        self.updateExpectedDeviceName(sensorSerialNumber: sensorSerialNumber)
+        if (self.libreSensorType == .libre27F) {
+            self.updateExpectedDeviceName(name: macAddress)
+        } else {
+            self.updateExpectedDeviceName(name: "ABBOTT" + serialNumber)
+        }
         
     }
     

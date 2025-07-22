@@ -1535,9 +1535,6 @@ final class RootViewController: UIViewController, ObservableObject {
                     // update data source info
                     updateDataSourceInfo()
                     
-                    // try and reload the widget timeline(s)
-                    WidgetCenter.shared.reloadAllTimelines()
-                    
                 }
                 
                 nightscoutSyncManager?.uploadLatestBgReadings(lastConnectionStatusChangeTimeStamp: lastConnectionStatusChangeTimeStamp())
@@ -3612,7 +3609,7 @@ final class RootViewController: UIViewController, ObservableObject {
                 var deviceStatusCreatedAt: Date?
                 var deviceStatusLastLoopDate: Date?
                 
-                if let deviceStatus = nightscoutSyncManager?.deviceStatus as? NightscoutDeviceStatus, UserDefaults.standard.nightscoutFollowType != .none, deviceStatus.createdAt != .distantPast {
+                if let deviceStatus = nightscoutSyncManager?.deviceStatus as? NightscoutDeviceStatus, UserDefaults.standard.nightscoutEnabled, UserDefaults.standard.nightscoutFollowType != .none, deviceStatus.createdAt != .distantPast {
                     deviceStatusCreatedAt = deviceStatus.createdAt
                     deviceStatusLastLoopDate = deviceStatus.lastLoopDate
                 }
@@ -3996,7 +3993,7 @@ extension RootViewController: UNUserNotificationCenterDelegate {
             // this will verify if it concerns an alert notification, if not pickerviewData will be nil
         } else if let pickerViewData = alertManager?.userNotificationCenter(center, willPresent: notification, withCompletionHandler: completionHandler) {
             
-            PickerViewController.displayPickerViewController(pickerViewData: pickerViewData, parentController: self)
+            PickerViewControllerModal.displayPickerViewController(pickerViewData: pickerViewData, parentController: self)
             
         }  else if notification.request.identifier == ConstantsNotifications.notificationIdentifierForVolumeTest {
             
@@ -4044,7 +4041,7 @@ extension RootViewController: UNUserNotificationCenterDelegate {
             if let pickerViewData = alertManager?.userNotificationCenter(center, didReceive: response) {
                 
                 trace("     userNotificationCenter didReceive, user pressed an alert notification to open the app", log: log, category: ConstantsLog.categoryRootView, type: .info)
-                PickerViewController.displayPickerViewController(pickerViewData: pickerViewData, parentController: self)
+                PickerViewControllerModal.displayPickerViewController(pickerViewData: pickerViewData, parentController: self)
                 
             } else {
                 // it as also not an alert notification that the user clicked, there might come in other types of notifications in the future
